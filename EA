@@ -1,0 +1,1179 @@
+//+------------------------------------------------------------------+
+//|                                                trendlines_EA.mq4 |
+//|                                       Thomas Van De Crommenacker |
+//|                                    tpvandecrommenacker@gmail.com |
+//+------------------------------------------------------------------+
+#property copyright "Thomas Van De Crommenacker"
+#property link      "tpvandecrommenacker@gmail.com"
+#property version   "2.00"
+#property strict
+//+------------------------------------------------------------------+
+//| ENUMERATIOS                                                      |
+//+------------------------------------------------------------------+
+//--- trade signal types
+enum ENUM_TRADE_SIGNAL
+  {
+   TRADE_SIGNAL_VOID=-1,
+   TRADE_SIGNAL_NEUTRAL,
+   TRADE_SIGNAL_BUY,
+   TRADE_SIGNAL_SELL
+  };
+//--- order set types
+enum ENUM_ORDER_SET
+  {
+   ORDER_SET_ALL=-1,
+   ORDER_SET_BUY,
+   ORDER_SET_SELL,
+   ORDER_SET_BUY_LIMIT,
+   ORDER_SET_SELL_LIMIT,
+   ORDER_SET_BUY_STOP,
+   ORDER_SET_SELL_STOP,
+   ORDER_SET_LONG,
+   ORDER_SET_SHORT,
+   ORDER_SET_LIMIT,
+   ORDER_SET_STOP,
+   ORDER_SET_MARKET,
+   ORDER_SET_PENDING
+  };
+//--- money management types
+enum MM
+  {
+   MM_FIXED_LOT,
+   MM_RISK_PERCENT,
+   MM_FIXED_RATIO,
+   MM_FIXED_RISK,
+   MM_FIXED_RISK_PER_POINT,
+  };
+
+input string symbol = NULL;
+input int timeframe = 0;
+input double lotsize=0.1;
+
+//--- hard stops params
+input int stoploss=0;
+input int takeprofit=0;
+//--- virtual stops params
+input int virtual_sl=250;
+input int virtual_tp=500;
+
+input int max_slippage=50;
+input string order_comment="";
+input int order_magic=12345;
+input int order_expire=0;
+input bool market_exec= false;
+
+//--- money management params
+input MM money_management=MM_FIXED_RATIO;
+input double mm1_risk = 0.05;
+input double mm2_lots = 0.05;
+input double mm2_per=1000;
+input double mm3_risk = 50;
+input double mm4_risk = 50;
+
+//--- breakeven params
+input int breakeven_threshold=200;
+// WAS 500
+input int breakeven_plus=0;
+//--- trailingstop params
+input int trail_value=20;
+input int trail_threshold=200;
+//WAS 500
+input int trail_step=20;
+
+//--- money management params
+input bool exit_opposite_signal=false;
+input int maxtrades=1;
+input bool entry_new_bar=true;
+input bool wait_next_bar_on_load=true;
+
+//--- trading time params
+input int start_time_hour=22;
+input int start_time_minute=0;
+input int end_time_hour=22;
+input int end_time_minute=0;
+input int gmt=0;
+
+//--- misc params
+input color arrow_color_long=clrMagenta;
+input color arrow_color_short=clrMagenta;
+input bool long_allowed=true;
+input bool short_allowed=true;
+
+//+------------------------------------------------------------------+
+//|INPUTS FOR SIGNALS                                                |
+//+------------------------------------------------------------------+ 
+input bool useRSI=true;
+input int rsi_period=14;
+input ENUM_APPLIED_PRICE rsi_price=PRICE_CLOSE;
+input int rsi_shift=0;
+input int overBoughtRSI=70;
+input int overSoldRSI=30;
+
+input bool useADX=true;
+input int adxShift  = 0;
+input int adxPeriod = 14;
+input ENUM_APPLIED_PRICE appliedPriceADX=PRICE_CLOSE;
+input int adxHigh = 70;
+input int adxLow  = 18;
+
+input bool useMACD=true;
+input int fast_ema_period    = 12;
+input int slow_ema_period    = 26;
+input int signal_period      = 9;
+input ENUM_APPLIED_PRICE applied_price=PRICE_CLOSE;
+input int MACDshift=1;
+
+input bool useIndicators =false;
+input bool useEntryAsExit=false;
+
+//-- parameters for support and resistance
+#property indicator_chart_window
+//---- input parameters
+extern int nPeriod=10;
+extern int nPeriod2=20;
+extern int nPeriod3=50;
+extern int Limit=350;
+
+//extern int priceShiftSR2=2;
+extern int priceShiftSR1=0;
+extern double priceMatch= 0.00005;
+///---- int Widners Oscilator
+int cnt,nCurBar=0;
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+int startTrendLines(int period)
+  {
+   if(period!=0)
+     {
+      //---- TODO: add your code here
+      double r1,r2,r3,r4,r5,r6;
+      int rt1,rt2,rt3,rt4,rt5,rt6;
+      double s1,s2,s3,s4,s5,s6;
+      int st1,st2,st3,st4,st5,st6;
+
+      if(Bars<Limit)
+         Limit=Bars-period;
+      for(nCurBar=Limit; nCurBar>0; nCurBar--)
+        {
+         if(Low[nCurBar+(period-1)/2]==Low[iLowest(NULL,0,MODE_LOW,period,nCurBar)])
+           {
+            s6=s5;s5=s4;s4=s3;s3=s2;s2=s1;
+            s1 = Low[nCurBar + (period-1)/2];
+            st6=st5;st5=st4;st4=st3;st3=st2;st2=st1;
+            st1= nCurBar+(period-1)/2;
+           }
+         if(High[nCurBar+(period-1)/2]==High[iHighest(NULL,0,MODE_HIGH,period,nCurBar)])
+           {
+            r6=r5;r5=r4;r4=r3;r3=r2;r2=r1;
+            r1 = High[nCurBar+(period-1)/2];
+            rt6=rt5;rt5=rt4;rt4=rt3;rt3=rt2;rt2=rt1;
+            rt1= nCurBar+(period-1)/2;
+           }
+        }
+      //---- Move Object in Chart
+      if(period==nPeriod)
+        {
+         ObjectMove("Trend DN-0",1,Time[st1],s1);
+         ObjectMove("Trend DN-0",0,Time[st2],s2);
+         //----
+         ObjectMove("Trend UP-0",1,Time[rt1],r1);
+         ObjectMove("Trend UP-0",0,Time[rt2],r2);
+        }
+      else if(period==nPeriod2)
+        {
+         ObjectMove("Trend DN-1",1,Time[st1],s1);
+         ObjectMove("Trend DN-1",0,Time[st2],s2);
+         //----
+         ObjectMove("Trend UP-1",1,Time[rt1],r1);
+         ObjectMove("Trend UP-1",0,Time[rt2],r2);
+        }
+      else if(period==nPeriod3)
+        {
+         ObjectMove("Trend DN-2",1,Time[st1],s1);
+         ObjectMove("Trend DN-2",0,Time[st2],s2);
+         //----
+         ObjectMove("Trend UP-2",1,Time[rt1],r1);
+         ObjectMove("Trend UP-2",0,Time[rt2],r2);
+        }
+      //----
+     }
+   return(0);
+  }
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+ENUM_TRADE_SIGNAL supportAndResistance()
+  {
+
+/*
+  
+  TODO: add code for breakouts?
+  
+  
+  */
+
+   int digits=(int)MarketInfo(OrderSymbol(),MODE_DIGITS);
+   double UP,DN,WSO,WRO,ask,bid,prevClose2,prevClose1;
+   ENUM_TRADE_SIGNAL signal=TRADE_SIGNAL_NEUTRAL;
+
+   for(cnt=0; cnt<=5; cnt++)
+     {
+      //prevClose2=iClose(NULL,0,priceShiftSR2);
+      prevClose1=iClose(NULL,0,priceShiftSR1);
+      ask = MarketInfo(NULL, MODE_ASK);
+      bid = MarketInfo(NULL, MODE_BID);
+      UP=ObjectGetValueByTime(ChartID(),"Trend UP-"+(string)cnt,iTime(NULL, 0, 0));
+      DN=ObjectGetValueByTime(ChartID(),"Trend DN-"+(string)cnt,iTime(NULL, 0, 0));
+      WSO=ObjectGetValueByTime(ChartID(),"WSO-"+(string)cnt,iTime(NULL, 0, 0));
+      WRO=ObjectGetValueByTime(ChartID(),"WRO-"+(string)cnt,iTime(NULL, 0, 0));
+
+      if(DN!=0 && compare_doubles(ask,DN,digits)==0)
+     // if(DN!=0 && WithinRangeOfTrendLine(ask,DN))
+        {
+         if(prevClose1>DN) //if last two closes were above resistance
+            signal=TRADE_SIGNAL_BUY;
+         else if(prevClose1<DN)
+            signal=TRADE_SIGNAL_SELL; //now acting as support in theory.
+         //Print("Trend DN "+cnt+" val:"+DN+"\n "+"ask: "+ask);
+        }
+      else if(UP!=0 && compare_doubles(bid,UP,digits)==0)
+      //if(UP!=0 && WithinRangeOfTrendLine(bid,UP))
+        {
+         if(prevClose1>UP)
+            signal=TRADE_SIGNAL_BUY;  // now acting as resistance in theory
+         else if(prevClose1<UP)
+            signal=TRADE_SIGNAL_SELL;
+         //Print("Trend UP "+cnt+" val:"+UP+"\n "+"bid: "+bid);
+        }
+
+     }
+   return signal;
+  }
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+//NOT CURRENTLY FUNCTIONAL...
+
+bool WithinRangeOfTrendLine(double price,double linePrice)
+  {
+   return MathAbs(price - linePrice) <= priceMatch ? true : false;
+  }
+//+------------------------------------------------------------------+
+//|  
+/*
+// used during testing to print the actual values of the trendline at the current bar
+if(UP!=0)
+   Print("Trend UP "+cnt+" val:"+UP);
+if(DN!=0)
+   Print("Trend DN "+cnt+" val:"+DN);
+if(WSO!=0)
+   Print("Trend WSO "+cnt+" val:"+WSO);
+if(WRO!=0)
+   Print("Trend WRO "+cnt+" val:"+WRO);
+   */
+
+int OnInit()
+  {
+//---
+   for(cnt=0; cnt<=5; cnt++)
+     {
+      ObjectCreate("WSO-"+(string)cnt,OBJ_HLINE,0,0,0);
+      ObjectSet("WSO-"+(string)cnt,OBJPROP_COLOR,clrMagenta);
+      ObjectCreate("WRO-"+(string)cnt,OBJ_HLINE,0,0,0);
+      ObjectSet("WRO-"+(string)cnt,OBJPROP_COLOR,clrMagenta);
+
+      if(cnt<5)
+        {
+         ObjectCreate("Trend DN-"+(string)cnt,OBJ_TREND,0,0,0,0,0);
+         ObjectSet("Trend DN-"+(string)cnt,OBJPROP_COLOR,clrMagenta);
+         ObjectCreate("Trend UP-"+(string)cnt,OBJ_TREND,0,0,0,0,0);
+         ObjectSet("Trend UP-"+(string)cnt,OBJPROP_COLOR,clrMagenta);
+        }
+     }
+//----
+   startTrendLines(nPeriod);
+   startTrendLines(nPeriod2);
+   startTrendLines(nPeriod3);
+//---
+   return(INIT_SUCCEEDED);
+  }
+//+------------------------------------------------------------------+
+//| Expert deinitialization function                                 |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+  {
+   for(cnt=0; cnt<=5; cnt++)
+     {
+      ObjectDelete("Trend UP-"+(string)cnt);
+      ObjectDelete("Trend DN-"+(string)cnt);
+      ObjectDelete("WSO-"+(string)cnt);
+      ObjectDelete("WRO-"+(string)cnt);
+     }
+  }
+//+------------------------------------------------------------------+
+//| Expert tick function                                             |
+//+------------------------------------------------------------------+
+void OnTick()
+  {
+//--- 
+/* time check */
+   startTrendLines(nPeriod);
+   startTrendLines(nPeriod2);
+   startTrendLines(nPeriod3);
+
+   bool time_in_range=is_time_in_range(TimeCurrent(),start_time_hour,start_time_minute,end_time_hour,end_time_minute,gmt);
+
+/* signals */
+   ENUM_TRADE_SIGNAL entry=0,exit=0;
+   entry=(ENUM_TRADE_SIGNAL)signal_entry();
+   exit=(ENUM_TRADE_SIGNAL)signal_exit();
+
+   signal_manage(entry,exit);
+
+/* exit */
+   if(exit==TRADE_SIGNAL_BUY)
+     {
+      close_all();
+     }
+   else if(exit==TRADE_SIGNAL_SELL)
+     {
+      close_all_long();
+     }
+   else if(exit==TRADE_SIGNAL_VOID)
+     {
+      close_all_short();
+     }
+
+/* entry */
+   int count_orders=0;
+
+   if(entry>0)
+     {
+      if(entry==TRADE_SIGNAL_BUY)
+        {
+         if(exit_opposite_signal)
+           {
+            exit_all_set(ORDER_SET_SELL,order_magic);
+           }
+         count_orders=count_orders(-1,order_magic);
+         if(maxtrades>count_orders)
+           {
+            if(!entry_new_bar || (entry_new_bar && is_new_bar(symbol,timeframe,wait_next_bar_on_load)))
+              {
+               enter_order(OP_BUY);
+              }
+           }
+        }
+      else if(entry==TRADE_SIGNAL_SELL)
+        {
+         if(exit_opposite_signal)
+           {
+            exit_all_set(ORDER_SET_BUY,order_magic);
+           }
+         count_orders=count_orders(-1,order_magic);
+         if(maxtrades>count_orders)
+           {
+            if(!entry_new_bar || (entry_new_bar && is_new_bar(symbol,timeframe,wait_next_bar_on_load)))
+              {
+               enter_order(OP_SELL);
+              }
+           }
+        }
+     }
+//---- breakeven check
+   if(breakeven_threshold>0)
+     {
+      breakeven_check(breakeven_threshold,breakeven_plus,order_magic);
+     }
+//---- trailingstop check
+   if(trail_value>0)
+     {
+      trailingstop_check(trail_value,trail_threshold,trail_step,order_magic);
+     }
+//---- virtual stop check
+   if(virtual_sl>0 || virtual_tp>0)
+     {
+      virtualstop_check(virtual_sl,virtual_tp);
+     }
+  }
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+ENUM_TRADE_SIGNAL signal_MACD()
+  {
+   ENUM_TRADE_SIGNAL signal=TRADE_SIGNAL_NEUTRAL;
+   double macd_main     = iMACD(NULL, 0, fast_ema_period, slow_ema_period, signal_period, applied_price, MODE_MAIN, MACDshift);
+   double macd_signal   = iMACD(NULL, 0, fast_ema_period, slow_ema_period, signal_period, applied_price, MODE_SIGNAL, MACDshift);
+   double macd_main_1   = iMACD(NULL, 0, fast_ema_period, slow_ema_period, signal_period, applied_price, MODE_MAIN, MACDshift+1);
+   double macd_signal_1 = iMACD(NULL, 0, fast_ema_period, slow_ema_period, signal_period, applied_price, MODE_SIGNAL, MACDshift+1);
+
+   signal=signalCrossover(macd_main,macd_main_1,macd_signal,macd_signal_1);
+
+   return signal;
+  }
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+ENUM_TRADE_SIGNAL signal_ADX()
+  {
+   ENUM_TRADE_SIGNAL signal=TRADE_SIGNAL_NEUTRAL;
+   double adxMain      = iADX(NULL,0,adxPeriod,appliedPriceADX,MODE_MAIN,adxShift);
+   double adxPlus      = iADX(NULL,0,adxPeriod,appliedPriceADX,MODE_PLUSDI,adxShift);
+   double adxMinus     = iADX(NULL,0,adxPeriod,appliedPriceADX,MODE_MINUSDI,adxShift);
+   double adxPrevPlus  = iADX(NULL,0,adxPeriod,appliedPriceADX,MODE_PLUSDI,adxShift+1);
+   double adxPrevMinus = iADX(NULL,0,adxPeriod,appliedPriceADX,MODE_MINUSDI,adxShift+1);
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+   if(adxMain<=adxLow || adxMain>=adxHigh)
+     {
+      signal=signalCrossover(adxMinus,adxPrevMinus,adxPlus,adxPrevPlus);
+     }
+   return signal;
+  }
+//+------------------------------------------------------------------+
+ENUM_TRADE_SIGNAL signal_RSI()
+  {
+   ENUM_TRADE_SIGNAL signal=TRADE_SIGNAL_NEUTRAL;
+   double rsiVal=iRSI(NULL,0,rsi_period,rsi_price,rsi_shift);
+
+   if(rsiVal>=overBoughtRSI)
+      signal=TRADE_SIGNAL_SELL;
+   else if(rsiVal<=overSoldRSI)
+                   signal=TRADE_SIGNAL_BUY;
+
+   return signal;
+  }
+//+------------------------------------------------------------------+
+//| Function for entry signals                                       |
+//+------------------------------------------------------------------+
+ENUM_TRADE_SIGNAL signal_entry()
+  {
+   ENUM_TRADE_SIGNAL signal=TRADE_SIGNAL_NEUTRAL;
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+   if(useIndicators)
+     {
+      if(useRSI)
+         signal=signal_add(signal,signal_RSI());
+      if(useADX)
+         signal=signal_add(signal,signal_ADX());
+      if(useMACD)
+         signal=signal_add(signal,signal_MACD());
+     }
+   signal=signal_add(signal,supportAndResistance());
+
+//return entry signal
+   return signal;
+  }
+//+------------------------------------------------------------------+
+//| Evaluation of exit signals                                       |
+//+------------------------------------------------------------------+
+int signal_exit()
+  {
+   ENUM_TRADE_SIGNAL signal=TRADE_SIGNAL_NEUTRAL;
+//add entry signals below
+   if(useEntryAsExit)
+     {
+      if(useIndicators)
+        {
+         if(useADX)
+            signal=signal_add(signal,signal_ADX());
+         if(useRSI)
+            signal=signal_add(signal,signal_RSI());
+        }
+     }
+//return exit signal
+   return signal;
+  }
+//+------------------------------------------------------------------+
+//| Calculation of volume                                            |
+//+------------------------------------------------------------------+
+double calculate_volume()
+  {
+   double volume=mm(money_management,symbol,lotsize,stoploss,mm1_risk,mm2_lots,mm2_per,mm3_risk,mm4_risk);
+   return volume;
+  }
+//+------------------------------------------------------------------+
+//| Entry of order                                                   |
+//+------------------------------------------------------------------+
+void enter_order(ENUM_ORDER_TYPE type)
+  {
+
+   if(type==OP_BUY || type==OP_BUYSTOP || type==OP_BUYLIMIT)
+      if(!long_allowed) return;
+   if(type==OP_SELL || type==OP_SELLSTOP || type==OP_SELLLIMIT)
+      if(!short_allowed) return;
+   double volume=calculate_volume();
+   entry(NULL,type,volume,0,max_slippage,stoploss,takeprofit,order_comment,order_magic,order_expire,arrow_color_short,market_exec);
+
+   int digits=(int)MarketInfo(OrderSymbol(),MODE_DIGITS);
+   double ask=MarketInfo(NULL,MODE_ASK);
+   double bid=MarketInfo(NULL,MODE_BID);
+
+   for(cnt=0; cnt<=1; cnt++)
+     {
+      double UP=ObjectGetValueByTime(ChartID(),"Trend UP-"+(string)cnt,iTime(NULL,0,0));
+      double DN=ObjectGetValueByTime(ChartID(),"Trend DN-"+(string)cnt,iTime(NULL,0,0));
+
+      if(type==OP_SELL && compare_doubles(UP,bid,digits)==0)
+         Print("UP: "+UP+", Bid: "+bid+" -- Trend UP-"+(string)cnt);
+      else if(type==OP_BUY && compare_doubles(DN,ask,digits)==0)
+         Print("DN: "+DN+", Ask: "+ask+" -- Trend DN-"+(string)cnt);
+     }
+  }
+//+------------------------------------------------------------------+
+//| Exit of all positions (or by set)                                |
+//+------------------------------------------------------------------+
+void close_all()
+  {
+   exit_all_set(ORDER_SET_ALL,order_magic);
+  }
+//+------------------------------------------------------------------+
+//| Exit of all long positions                                       |
+//+------------------------------------------------------------------+
+void close_all_long()
+  {
+   exit_all_set(ORDER_SET_BUY,order_magic);
+//exit_all_set(ORDER_SET_BUY_STOP,order_magic);
+//exit_all_set(ORDER_SET_BUY_LIMIT,order_magic);
+  }
+//+------------------------------------------------------------------+
+//| Exit of all short positions                                      |
+//+------------------------------------------------------------------+
+void close_all_short()
+  {
+   exit_all_set(ORDER_SET_SELL,order_magic);
+//exit_all_set(ORDER_SET_SELL_STOP,order_magic);
+//exit_all_set(ORDER_SET_SELL_LIMIT,order_magic);
+  }
+//+------------------------------------------------------------------+
+//| Management of overall signal                                     |
+//+------------------------------------------------------------------+
+void signal_manage(ENUM_TRADE_SIGNAL &entry,ENUM_TRADE_SIGNAL &exit)
+  {
+   if(exit==TRADE_SIGNAL_VOID)
+      entry=TRADE_SIGNAL_NEUTRAL;
+   if(exit==TRADE_SIGNAL_BUY && entry==TRADE_SIGNAL_SELL)
+      entry=TRADE_SIGNAL_NEUTRAL;
+   if(exit==TRADE_SIGNAL_SELL && entry==TRADE_SIGNAL_BUY)
+      entry=TRADE_SIGNAL_NEUTRAL;
+  }
+//+------------------------------------------------------------------+
+//| Breakeven check for an order                                     |
+//+------------------------------------------------------------------+
+bool breakeven_check_order(int ticket,int threshold,int plus)
+  {
+   if(ticket<=0) return true;
+   if(!OrderSelect(ticket,SELECT_BY_TICKET)) return false;
+   int digits=(int)MarketInfo(OrderSymbol(),MODE_DIGITS);
+   double point=MarketInfo(OrderSymbol(),MODE_POINT);
+   bool result=true;
+
+   if(OrderType()==OP_BUY)
+     {
+      double newsl=OrderOpenPrice()+plus*point;
+      double profit_in_pts=OrderClosePrice()-OrderOpenPrice();
+      if(OrderStopLoss()==0 || compare_doubles(newsl,OrderStopLoss(),digits)>0)
+         if(compare_doubles(profit_in_pts,threshold*point,digits)>=0)
+            result=modify(ticket,newsl);
+     }
+   else if(OrderType()==OP_SELL)
+     {
+      double newsl=OrderOpenPrice()-plus*point;
+      double profit_in_pts=OrderOpenPrice()-OrderClosePrice();
+      if(OrderStopLoss()==0 || compare_doubles(newsl,OrderStopLoss(),digits)<0)
+         if(compare_doubles(profit_in_pts,threshold*point,digits)>=0)
+            result=modify(ticket,newsl);
+     }
+   return result;
+  }
+//+------------------------------------------------------------------+
+//| Breakeven check                                |
+//+------------------------------------------------------------------+
+void breakeven_check(int threshold,int plus,int magic=-1)
+  {
+   for(int i=0;i<OrdersTotal();i++)
+     {
+      if(OrderSelect(i,SELECT_BY_POS))
+         if(magic==-1 || magic==OrderMagicNumber())
+            breakeven_check_order(OrderTicket(),threshold,plus);
+     }
+  }
+//+------------------------------------------------------------------+
+//| Order modification                                               |
+//+------------------------------------------------------------------+
+bool modify_order(int ticket,double sl,double tp=-1,double price=-1,datetime expire=0,color a_color=clrNONE)
+  {
+   bool result=false;
+   if(OrderSelect(ticket,SELECT_BY_TICKET))
+     {
+      string ins=OrderSymbol();
+      int digits=(int)MarketInfo(ins,MODE_DIGITS);
+      if(sl==-1) sl=OrderStopLoss();
+      else sl=NormalizeDouble(sl,digits);
+      if(tp==-1) tp=OrderTakeProfit();
+      else tp=NormalizeDouble(tp,digits);
+      if(OrderType()<=1)
+        {
+         if(compare_doubles(sl,OrderStopLoss(),digits)==0 && 
+            compare_doubles(tp,OrderTakeProfit(),digits)==0)
+            return true;
+         price=OrderOpenPrice();
+        }
+      else if(OrderType()>1)
+        {
+         if(price==-1)
+            price= OrderOpenPrice();
+         else price=NormalizeDouble(price,digits);
+         if(compare_doubles(price,OrderOpenPrice(),digits)==0 && 
+            compare_doubles(sl,OrderStopLoss(),digits)==0 && 
+            compare_doubles(tp,OrderTakeProfit(),digits)==0 && 
+            expire==OrderExpiration())
+            return true;
+        }
+      result=OrderModify(ticket,price,sl,tp,expire,a_color);
+     }
+   return result;
+  }
+//+------------------------------------------------------------------+
+//| Checking before calling the modify_order() function              |
+//+------------------------------------------------------------------+
+bool modify(int ticket,double sl,double tp=-1,double price=-1,datetime expire=0,color a_color=clrNONE,int retries=3,int sleep=500)
+  {
+   bool result=false;
+   if(ticket>0)
+     {
+      for(int i=0;i<retries;i++)
+        {
+         if(!IsConnected()) Print("No internet connection");
+         else if(!IsExpertEnabled()) Print("Experts not enabled in trading platform");
+         else if(IsTradeContextBusy()) Print("Trade context is busy");
+         else if(!IsTradeAllowed()) Print("Trade is not allowed in trading platform");
+         else result=modify_order(ticket,sl,tp,price,expire,a_color);
+         if(result)
+            break;
+         Sleep(sleep);
+        }
+     }
+   else Print("Invalid ticket for modify function");
+   return result;
+  }
+//+------------------------------------------------------------------+
+//| Function for comparing values of type double                     |
+//+------------------------------------------------------------------+
+int compare_doubles(double var1,double var2,int precision)
+  {
+   double point=MathPow(10,-precision); //10^(-precision)
+   int var1_int = (int) (var1/point);
+   int var2_int = (int) (var2/point);
+   if(var1_int>var2_int)
+      return 1;
+   else if(var1_int<var2_int)
+      return -1;
+   return 0;
+  }
+//+------------------------------------------------------------------+
+//| Exit an order                                                    |
+//+------------------------------------------------------------------+
+bool exit_order(int ticket,double size=-1,color a_color=clrNONE,int slippage=50)
+  {
+   bool result=false;
+   if(OrderSelect(ticket,SELECT_BY_TICKET))
+     {
+      if(OrderType()<=1)
+        {
+         result=OrderClose(ticket,OrderLots(),OrderClosePrice(),slippage,a_color);
+        }
+      else if(OrderType()>1)
+        {
+         result=OrderDelete(ticket,a_color);
+        }
+     }
+   return result;
+  }
+//+------------------------------------------------------------------+
+//| Checking before calling exit_order() function                    |
+//+------------------------------------------------------------------+
+bool exit(int ticket,color a_color=clrNONE,int slippage=50,int retries=3,int sleep=500)
+  {
+   bool result=false;
+   for(int i=0;i<retries;i++)
+     {
+      if(!IsConnected()) Print("No internet connection");
+      else if(!IsExpertEnabled()) Print("Experts not enabled in trading platform");
+      else if(IsTradeContextBusy()) Print("Trade context is busy");
+      else if(!IsTradeAllowed()) Print("Trade is not allowed in trading platform");
+      else result=exit_order(ticket,a_color,slippage);
+      if(result)
+         break;
+      Print("Closing order# "+DoubleToStr(OrderTicket(),0)+" failed "+DoubleToStr(GetLastError(),0));
+      Sleep(sleep);
+     }
+   return result;
+  }
+//+------------------------------------------------------------------+
+//| Exit all orders by type and/or magic                             |
+//+------------------------------------------------------------------+
+void exit_all(int type=-1,int magic=-1)
+  {
+   for(int i=OrdersTotal();i>=0;i--)
+     {
+      if(OrderSelect(i,SELECT_BY_POS))
+        {
+         if((type==-1 || type==OrderType()) && (magic==-1 || magic==OrderMagicNumber()))
+            exit(OrderTicket());
+        }
+     }
+  }
+//+------------------------------------------------------------------+
+//| Exit all orders by set                                           |
+//+------------------------------------------------------------------+
+void exit_all_set(ENUM_ORDER_SET type=-1,int magic=-1)
+  {
+   for(int i=OrdersTotal();i>=0;i--)
+     {
+      if(OrderSelect(i,SELECT_BY_POS))
+        {
+         if(magic==-1 || magic==OrderMagicNumber())
+           {
+            int ordertype=OrderType();
+            int ticket=OrderTicket();
+            switch(type)
+              {
+               case ORDER_SET_BUY:
+                  if(ordertype==OP_BUY) exit(ticket);
+                  break;
+               case ORDER_SET_SELL:
+                  if(ordertype==OP_SELL) exit(ticket);
+                  break;
+               case ORDER_SET_BUY_LIMIT:
+                  if(ordertype==OP_BUYLIMIT) exit(ticket);
+                  break;
+               case ORDER_SET_SELL_LIMIT:
+                  if(ordertype==OP_SELLLIMIT) exit(ticket);
+                  break;
+               case ORDER_SET_BUY_STOP:
+                  if(ordertype==OP_BUYSTOP) exit(ticket);
+                  break;
+               case ORDER_SET_SELL_STOP:
+                  if(ordertype==OP_SELLSTOP) exit(ticket);
+                  break;
+               case ORDER_SET_LONG:
+                  if(ordertype==OP_BUY || ordertype==OP_BUYLIMIT || ordertype==OP_BUYSTOP)
+                  exit(ticket);
+                  break;
+               case ORDER_SET_SHORT:
+                  if(ordertype==OP_SELL || ordertype==OP_SELLLIMIT || ordertype==OP_SELLSTOP)
+                  exit(ticket);
+                  break;
+               case ORDER_SET_LIMIT:
+                  if(ordertype==OP_BUYLIMIT || ordertype==OP_SELLLIMIT)
+                  exit(ticket);
+                  break;
+               case ORDER_SET_STOP:
+                  if(ordertype==OP_BUYSTOP || ordertype==OP_SELLSTOP)
+                  exit(ticket);
+                  break;
+               case ORDER_SET_MARKET:
+                  if(ordertype<=1) exit(ticket);
+                  break;
+               case ORDER_SET_PENDING:
+                  if(ordertype>1) exit(ticket);
+                  break;
+               default: exit(ticket);
+              }
+           }
+        }
+     }
+  }
+//+------------------------------------------------------------------+
+//| Sending an order                                                 |
+//+------------------------------------------------------------------+
+int send_order(string ins,int cmd,double volume,int distance,int slippage,int sl,int tp,string comment=NULL,int magic=0,int expire=0,color a_clr=clrNONE,bool market=false)
+  {
+   double price=0;
+   double price_sl = 0;
+   double price_tp = 0;
+   double point=MarketInfo(ins,MODE_POINT);
+   datetime expiry= 0;
+   int order_type = -1;
+   RefreshRates();
+   if(cmd==OP_BUY)
+     {
+      if(distance>0) order_type=OP_BUYSTOP;
+      else if(distance<0) order_type=OP_BUYLIMIT;
+      else order_type=OP_BUY;
+      if(order_type==OP_BUY) distance=0;
+      price=MarketInfo(ins,MODE_ASK)+distance*point;
+      if(!market)
+        {
+         if(sl>0) price_sl = price-sl*point;
+         if(tp>0) price_tp = price+tp*point;
+        }
+     }
+   else if(cmd==OP_SELL)
+     {
+      if(distance>0) order_type=OP_SELLLIMIT;
+      else if(distance<0) order_type=OP_SELLSTOP;
+      else order_type=OP_SELL;
+      if(order_type==OP_SELL) distance=0;
+      price=MarketInfo(ins,MODE_BID)+distance*point;
+      if(!market)
+        {
+         if(sl>0) price_sl = price+sl*point;
+         if(tp>0) price_tp = price-tp*point;
+        }
+     }
+   if(order_type<0) return 0;
+   else  if(order_type==0 || order_type==1) expiry=0;
+   else if(expire>0)
+      expiry=(datetime)MarketInfo(ins,MODE_TIME)+expire;
+   if(market)
+     {
+      int ticket=OrderSend(ins,order_type,volume,price,slippage,0,0,comment,magic,expiry,a_clr);
+      if(ticket>0)
+        {
+         if(OrderSelect(ticket,SELECT_BY_TICKET))
+           {
+            if(cmd==OP_BUY)
+              {
+               if(sl>0) price_sl = OrderOpenPrice()-sl*point;
+               if(tp>0) price_tp = OrderOpenPrice()+tp*point;
+              }
+            else if(cmd==OP_SELL)
+              {
+               if(sl>0) price_sl = OrderOpenPrice()+sl*point;
+               if(tp>0) price_tp = OrderOpenPrice()-tp*point;
+              }
+            bool result=modify(ticket,price_sl,price_tp);
+           }
+        }
+      return ticket;
+     }
+   return OrderSend(ins,order_type,volume,price,slippage,price_sl,price_tp,comment,magic,expiry,a_clr);
+  }
+//+------------------------------------------------------------------+
+//| Checking before send_order() function is called                  |
+//+------------------------------------------------------------------+
+int entry(string ins,int cmd,double volume,int distance,int slippage,int sl,int tp,string comment=NULL,int magic=0,int expire=0,color a_clr=clrNONE,bool market=false,int retries=3,int sleep=500)
+  {
+   int ticket=0;
+   for(int i=0;i<retries;i++)
+     {
+      if(IsStopped()) Print("Expert was stopped");
+      else if(!IsConnected()) Print("No internet connection");
+      else if(!IsExpertEnabled()) Print("Experts not enabled in trading platform");
+      else if(IsTradeContextBusy()) Print("Trade context is busy");
+      else if(!IsTradeAllowed()) Print("Trade is not allowed in trading platform");
+      else ticket=send_order(ins,cmd,volume,distance,slippage,sl,tp,comment,magic,expire,a_clr,market);
+      if(ticket>0)
+         break;
+      else Print("Error in sending order ("+IntegerToString(GetLastError(),0)+"), retry: "+IntegerToString(i,0)+"/"+IntegerToString(retries));
+      Sleep(sleep);
+     }
+   return ticket;
+  }
+//+------------------------------------------------------------------+
+//| Trailingstop check for an order                                  |
+//+------------------------------------------------------------------+
+bool trailingstop_check_order(int ticket,int trail,int threshold,int step)
+  {
+   if(ticket<=0) return true;
+   if(!OrderSelect(ticket,SELECT_BY_TICKET)) return false;
+   int digits=(int) MarketInfo(OrderSymbol(),MODE_DIGITS);
+   double point=MarketInfo(OrderSymbol(),MODE_POINT);
+   bool result=true;
+   if(OrderType()==OP_BUY)
+     {
+      double newsl=OrderClosePrice()-trail*point;
+      double activation=OrderOpenPrice()+threshold*point;
+      double activation_sl=activation-(trail*point);
+      double step_in_pts= newsl-OrderStopLoss();
+      if(OrderStopLoss()==0|| compare_doubles(activation_sl,OrderStopLoss(),digits)>0)
+        {
+         if(compare_doubles(OrderClosePrice(),activation,digits)>=0)
+            result=modify(ticket,activation_sl);
+        }
+      else if(compare_doubles(step_in_pts,step*point,digits)>=0)
+        {
+         result=modify(ticket,newsl);
+        }
+     }
+   else if(OrderType()==OP_SELL)
+     {
+      double newsl=OrderClosePrice()+trail*point;
+      double activation=OrderOpenPrice()-threshold*point;
+      double activation_sl=activation+(trail*point);
+      double step_in_pts= OrderStopLoss()-newsl;
+      if(OrderStopLoss()==0|| compare_doubles(activation_sl,OrderStopLoss(),digits)<0)
+        {
+         if(compare_doubles(OrderClosePrice(),activation,digits)<=0)
+            result=modify(ticket,activation_sl);
+        }
+      else if(compare_doubles(step_in_pts,step*point,digits)>=0)
+        {
+         result=modify(ticket,newsl);
+        }
+     }
+   return result;
+  }
+//+------------------------------------------------------------------+
+//| Trailingstop check for all orders                                |
+//+------------------------------------------------------------------+
+void trailingstop_check(int trail,int threshold,int step,int magic=-1)
+  {
+   for(int i=0;i<OrdersTotal();i++)
+     {
+      if(OrderSelect(i,SELECT_BY_POS))
+        {
+         if(magic==-1 || magic==OrderMagicNumber())
+            trailingstop_check_order(OrderTicket(),trail,threshold,step);
+        }
+     }
+  }
+//+------------------------------------------------------------------+
+//| Addition of a new signal                                         |
+//+------------------------------------------------------------------+
+ENUM_TRADE_SIGNAL signal_add(ENUM_TRADE_SIGNAL current,ENUM_TRADE_SIGNAL add,bool exit=false)
+  {
+   if(current==TRADE_SIGNAL_VOID)
+      return current;
+   else if(current==TRADE_SIGNAL_NEUTRAL)
+      return add;
+   else
+     {
+      if(add==TRADE_SIGNAL_NEUTRAL)
+         return current;
+      else if(add==TRADE_SIGNAL_VOID)
+         return add;
+      else if(add!=current)
+        {
+         if(exit)
+            return TRADE_SIGNAL_VOID;
+         else
+            return TRADE_SIGNAL_NEUTRAL;
+        }
+     }
+   return add;
+  }
+//+------------------------------------------------------------------+
+//| Money management                                                 |
+//+------------------------------------------------------------------+
+double mm(MM method,string ins,double lots,int sl,double risk_mm1,double lots_mm2,double per_mm2,double risk_mm3,double risk_mm4)
+  {
+   double balance=AccountBalance();
+   double tick_value=MarketInfo(ins,MODE_TICKVALUE);
+   double volume=lots;
+   switch(method)
+     {
+      case MM_RISK_PERCENT:
+         if(sl>0) volume=((balance*risk_mm1)/sl)/tick_value;
+         break;
+      case MM_FIXED_RATIO:
+         volume=balance*lots_mm2/per_mm2;
+         break;
+      case MM_FIXED_RISK:
+         if(sl>0) volume=(risk_mm3/tick_value)/sl;
+         break;
+      case MM_FIXED_RISK_PER_POINT:
+         volume=risk_mm4/tick_value;
+         break;
+     }
+   double min_lot=MarketInfo(ins,MODE_MINLOT);
+   double max_lot=MarketInfo(ins,MODE_MAXLOT);
+   int lot_digits=(int) -MathLog10(MarketInfo(ins,MODE_LOTSTEP));
+   volume=NormalizeDouble(volume,lot_digits);
+   if(volume<min_lot) volume=min_lot;
+   if(volume>max_lot) volume=max_lot;
+   return volume;
+  }
+//+------------------------------------------------------------------+
+//| New bar detection                                                |
+//+------------------------------------------------------------------+
+bool is_new_bar(string ins,int tf,bool wait=false)
+  {
+   static datetime bar_time=0;
+   static double open_price=0;
+   datetime current_bar_time=iTime(ins,tf,0);
+   double current_open_price=iOpen(ins,tf,0);
+   int digits=(int)MarketInfo(ins,MODE_DIGITS);
+
+   if(bar_time==0 && open_price==0)
+     {
+      bar_time=current_bar_time;
+      open_price=current_open_price;
+      if(wait)
+         return false;
+      else return true;
+     }
+   else if(current_bar_time>bar_time && 
+      compare_doubles(open_price,current_open_price,digits)!=0)
+        {
+         bar_time=current_bar_time;
+         open_price=current_open_price;
+         return true;
+        }
+      return false;
+  }
+//+------------------------------------------------------------------+
+//| Counting of orders                                               |
+//+------------------------------------------------------------------+
+int count_orders(ENUM_ORDER_SET type=-1,int magic=-1)
+  {
+   int count= 0;
+   for(int i=OrdersTotal();i>=0;i--)
+     {
+      if(OrderSelect(i,SELECT_BY_POS))
+        {
+         if(magic==-1 || magic==OrderMagicNumber())
+           {
+            int ordertype=OrderType();
+            int ticket=OrderTicket();
+            switch(type)
+              {
+               case ORDER_SET_BUY:
+                  if(ordertype==OP_BUY) count++;
+                  break;
+               case ORDER_SET_SELL:
+                  if(ordertype==OP_SELL) count++;
+                  break;
+               case ORDER_SET_BUY_LIMIT:
+                  if(ordertype==OP_BUYLIMIT) count++;
+                  break;
+               case ORDER_SET_SELL_LIMIT:
+                  if(ordertype==OP_SELLLIMIT) count++;
+                  break;
+               case ORDER_SET_BUY_STOP:
+                  if(ordertype==OP_BUYSTOP) count++;
+                  break;
+               case ORDER_SET_SELL_STOP:
+                  if(ordertype==OP_SELLSTOP) count++;
+                  break;
+               case ORDER_SET_LONG:
+                  if(ordertype==OP_BUY || ordertype==OP_BUYLIMIT || ordertype==OP_BUYSTOP)
+                  count++;
+                  break;
+               case ORDER_SET_SHORT:
+                  if(ordertype==OP_SELL || ordertype==OP_SELLLIMIT || ordertype==OP_SELLSTOP)
+                  count++;
+                  break;
+               case ORDER_SET_LIMIT:
+                  if(ordertype==OP_BUYLIMIT || ordertype==OP_SELLLIMIT)
+                  count++;
+                  break;
+               case ORDER_SET_STOP:
+                  if(ordertype==OP_BUYSTOP || ordertype==OP_SELLSTOP)
+                  count++;
+                  break;
+               case ORDER_SET_MARKET:
+                  if(ordertype<=1) count++;
+                  break;
+               case ORDER_SET_PENDING:
+                  if(ordertype>1) count++;
+                  break;
+               default: count++;
+              }
+           }
+        }
+     }
+   return count;
+  }
+//+------------------------------------------------------------------+
+//| Checking if time is in range                                     |
+//+------------------------------------------------------------------+
+bool is_time_in_range(datetime time,int start_hour,int start_min,int end_hour,int end_min,int gmt_offset=0)
+  {
+   if(gmt_offset!=0)
+     {
+      start_hour+=gmt_offset;
+      end_hour+=gmt_offset;
+     }
+   if(start_hour>23) start_hour=(start_hour-23)-1;
+   else if(start_hour<0) start_hour=23+start_hour+1;
+   if(end_hour>23) end_hour=(end_hour-23)-1;
+   else if(end_hour<0) end_hour=23+end_hour+1;
+   int hour=TimeHour(time);
+   int minute=TimeMinute(time);
+   int t = (hour*3600)+(minute*60);
+   int s = (start_hour*3600)+(start_min*60);
+   int e = (end_hour*3600)+(end_min*60);
+   if(s==e)
+      return true;
+   else if(s<e)
+     {
+      if(t>=s && t<e)
+         return true;
+     }
+   else if(s>e)
+     {
+      if(t>=s || t<e)
+         return true;
+     }
+   return false;
+  }
+//+------------------------------------------------------------------+
+//| Virtual stop checking for an order                               |
+//+------------------------------------------------------------------+
+bool virtualstop_check_order(int ticket,int sl,int tp)
+  {
+   if(ticket<=0) return true;
+   if(!OrderSelect(ticket,SELECT_BY_TICKET)) return false;
+   int digits=(int) MarketInfo(OrderSymbol(),MODE_DIGITS);
+   double point=MarketInfo(OrderSymbol(),MODE_POINT);
+   bool result=true;
+   if(OrderType()==OP_BUY)
+     {
+      double virtual_stoploss=OrderOpenPrice()-sl*point;
+      double virtual_takeprofit=OrderOpenPrice()+tp*point;
+      if((sl>0 && compare_doubles(OrderClosePrice(),virtual_stoploss,digits)<=0) || 
+         (tp>0 && compare_doubles(OrderClosePrice(),virtual_takeprofit,digits)>=0))
+        {
+         result=exit_order(ticket);
+        }
+     }
+
+   else if(OrderType()==OP_SELL)
+     {
+      double virtual_stoploss=OrderOpenPrice()+sl*point;
+      double virtual_takeprofit=OrderOpenPrice()-tp*point;
+      if((sl>0 && compare_doubles(OrderClosePrice(),virtual_stoploss,digits)>=0) || 
+         (tp>0 && compare_doubles(OrderClosePrice(),virtual_takeprofit,digits)<=0))
+        {
+         result=exit_order(ticket);
+        }
+     }
+   return result;
+  }
+//+------------------------------------------------------------------+
+//| Virtual stop check for all orders                                |
+//+------------------------------------------------------------------+
+void virtualstop_check(int sl,int tp,int magic=-1)
+  {
+   for(int i=0;i<OrdersTotal();i++)
+     {
+      if(OrderSelect(i,SELECT_BY_POS))
+         if(magic==-1 || magic==OrderMagicNumber())
+            virtualstop_check_order(OrderTicket(),sl,tp);
+     }
+  }
+//+------------------------------------------------------------------+
+//| Signal Crossover                                                 |
+//+------------------------------------------------------------------+
+ENUM_TRADE_SIGNAL signalCrossover(double a1,double a2,double b1,double b2)
+  {
+   ENUM_TRADE_SIGNAL signal=TRADE_SIGNAL_NEUTRAL;
+   if(a1<b1 && a2>=b2)
+     {
+      signal=TRADE_SIGNAL_BUY;
+     }
+   else if(a1>b1 && a2<=b2)
+     {
+      signal=TRADE_SIGNAL_SELL;
+     }
+   return signal;
+  }
+//+------------------------------------------------------------------+
